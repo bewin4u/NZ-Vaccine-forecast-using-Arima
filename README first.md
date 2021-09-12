@@ -1,0 +1,2 @@
+# NZ-Vaccine-forecast-using-Arima
+This is a group project done to forecast when New Zealand will achieve Herd Immunity(based on 70% , 80% and 90% of  cumulative vaccination of the population). The source data being taken from the Ministry of Health Website https://www.health.govt.nz/our-work/diseases-and-conditions/covid-19-novel-coronavirus/covid-19-data-and-statistics/covid-19-vaccine-data , I have used ARIMA( “autoregressive integrated moving average”) algorithm in R, I have forecast when NZ will achieve 80% of cumulative vaccination. Programming tool used - R
