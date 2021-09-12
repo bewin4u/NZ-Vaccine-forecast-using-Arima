@@ -1,0 +1,194 @@
+---
+title: "ARIMA IN R"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include= TRUE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+## R Markdown
+# First we load the required Data into Dataframes. We can load the Vaccine data excel sheet as a whole and access page by page. But to avoid confusion we load different sheets of the same excel file into different dataframes.
+
+#df1 is our first data frame having Weekwise cumulative vaccine details till 29/08/2021(total weeks we have now is 29)
+
+library(readxl)
+dfm = read_excel("G:\\Sem2\\INFO634\\group project\\Vaccinations by Week.xlsx")
+
+
+#To do a time series forecasting we need just two columns - the date  and the other will be the values to be projected
+
+#Exploring the data - to just view the data frame its headTail to see the values
+library(psych)
+headTail(dfm)
+dimnames(dfm) # To check the column names of the dataframe
+
+
+#So from the existing dataframe we create a new dataframe df_time which has only two columns of df - time(Date) and values(Cumulative_vaccinations_administered)
+
+
+df_time = dfm[, c(1,3)]
+library(psych)
+headTail(df_time, top = 5, bottom = 5,
+ellipsis = TRUE)
+
+
+#Data Pre processing/cleaning - to see the null values in our new dataframe we use is.na command
+library(tidyverse)
+map(df_time, ~sum(is.na(.)))
+
+#From the result we see that there are 14 null values in one of the columns. Since this is a forecasting model and these null values are present at the end of the table we dont need to impute them or replace them. We don't have data for those time points which are in future. So we just delete them in order to get a good forecast in their place
+df_time <- na.omit(df_time)
+map(df_time, ~sum(is.na(.)))
+df_time
+class(df_time)
+str(df_time)
+
+###############################################################################
+#Note - Time series column here is not the date. In fact it is actually the vaccination numbers which change with date
+###############################################################################
+
+
+#Now we just plot the dataframe to see the trend of the data whether it is upward or downward
+
+###############################################################################
+#Loading the required libraries for forecasting
+library(forecast)
+library(ggplot2)
+###############################################################################
+
+df_time$Date <- as.Date(df_time$Date)
+plot(df_time) # the trend is upward and ARIMA requires stationarity of data
+
+#All time series algorithms require data in time series format. Hence we convert the data frame to time series using xts library
+class(df_time)
+library("xts")  
+New_ts <- xts(df_time$Cumulative_vaccinations_administered, df_time$Date)
+New_ts
+
+is.xts(New_ts)
+#Plotting the new time series to check the trend and values
+plot(New_ts) 
+###############################################################################
+
+library(tseries)
+
+#1)Examine for Stationarity
+
+#The plots clearly show an upward trend. But time series data need to be stationary in order to the algorithm to perform well. Statistically we examine stationarity with ACF, PACF and ADF tests.
+
+acf(New_ts)
+#Checking for Autocorrelation function. The spikes in the graph crosses the dotted blue lines which show that the data is highly correlated. Which means the data is not stationary
+pacf(New_ts)
+# Checks for partial auto correlation. Here we doesn't have much issue because the spikes here are minimum.
+
+adf.test(New_ts) 
+#Augmented Dickey Fuller test (ADF Test) is a common statistical test used to test whether a given Time series is stationary or not. It is one of the most commonly used statistical test when it comes to analyzing the stationary of a series
+
+#The p value here should be less than 0.05 but wht we have here is very much higher which is 0.99
+
+#These tests tell us that the data is not stationary.
+
+###############################################################################
+#2)Selecting the model with Auto Arima function along with AIC - Akaike information criterion, AIC is used to compare different possible models and determine which one is the best fit for the data so that the model has less trend and more stationarity
+
+Vac_forecast = auto.arima(New_ts, ic = "aic", trace = TRUE )
+
+
+#Auto arima tells us that the best arima model with pdq would be 0,2,0 [ A nonseasonal ARIMA model is classified as an "ARIMA(p,d,q)" model, where: p is the number of autoregressive terms, d is the number of nonseasonal differences needed for stationarity, and. q is the number of lagged forecast errors in the prediction equation --- wikipedia]
+
+###############################################################################
+
+#3)Visualising our forecast
+Our_forecast = forecast(Vac_forecast, level = c(95), h= 29)
+Our_forecast
+library(ggfortify)
+autoplot(Our_forecast) + ggtitle("NZ Cumulative Vaccine Doses forecast for 2021 using ARIMA") +  labs(x = 'Days', y = 'Cummulative vaccinations')
+
+#The blue line in the middle is the Arima Point Forecast daywise while the shadow part above the blue line is the upper bound level Arima's 95% confidence limit and the shadow part below the blue line is lower bound level of Arima's 95% confidence limit.
+
+
+
+
+#Model Evaluation metrics - 1)MAPE and 2)Ljung Box test
+#Using MAPE
+summary(Vac_forecast)
+
+#The mean absolute percentage error (MAPE) is the mean or average of the absolute percentage errors of forecasts. Error is defined as actual or observed value minus the forecasted value.
+
+#Since MAPE is a measure of error, high numbers are interpreted bad and low numbers are really good. For reporting purposes, as a convention statisticians translate this to accuracy numbers by subtracting the MAPE from 100. Therefore from the summary the MAPE is 3.841 and subtracting from 100 we get the model accuracy as 96% which shows that the model is performing good.
+
+
+
+#2) Validating the model using Ljung-Box test
+Box.test(Our_forecast$resid, lag = 5, type = "Ljung-Box")
+
+#Ljung Box test results interpretation - A small p-value (typically ≤ 0.05) indicates strong evidence against the null hypothesis, so you reject the null hypothesis. A large p-value (> 0.05) indicates weak evidence against the null hypothesis, so you fail to reject the null hypothesis
+
+#But the null hypothesis of the Box Ljung Test, H0, is that our model does not show lack of fit (or in simple terms—the model is just fine). The alternate hypothesis, Ha, is just that the model does show a lack of fit.
+
+#In our case especially in Ljung-Box test, we have p values of 0.797(when the lag is 5).Therefore it could be concluded that the H0(the model is just fine) isn't rejected and model performs probably well.
+
+
+
+#Evaluating the model visually by plotting acf and pacf of the model
+#To check again for stationarity of the model
+acf(ts(Vac_forecast$residuals))
+
+
+pacf(ts(Vac_forecast$residuals))
+
+#Now you see there is stationarity and all spikes are below the blue line
+
+
+
+
+#Finally we write our results(first we store them into a dataframe and then write to excel) into a separate excel file and then copy that data with the base file to compare our predictions with the government's data and evaluate our model practically
+
+
+Final_prediction_Weekwise = data.frame(Our_forecast)
+Final_prediction_Weekwise
+library("writexl")
+write_xlsx(Final_prediction_Weekwise,"G:\\Sem2\\INFO634\\group project\\Time series daywise\\Weekwise_projections_Arima.xlsx")
+
+comparison <- read_excel("G:\\Sem2\\INFO634\\group project\\Result comparison of ARIMA .xlsx")
+comparison
+dimnames(comparison)
+map(comparison, ~sum(is.na(.)))
+library(ggplot2)
+str(comparison)
+comparison$Date <- as.Date(comparison$Date)
+#Note that the forecast starts only from 05/09/2021 and for viasualization purpose we have included the actual vaccination count till 29/08/2021 as the initial data points for showing continuity in the plot
+
+#We load our plot into an object NP1 and then add labels using ggtext
+NP1 <- ggplot()+ geom_point(aes(x=Date, y = Arima_Point_Forecast), color = "blue", data = comparison)+ geom_line(aes(x=Date,y = Lo.95), color = "red", data = comparison) + geom_line(aes(x=Date, y =Hi.95), color = "green", data = comparison) + scale_x_date(date_labels = "%d-%m-%Y")
+
+NP1
+
+library(ggtext)
+NP1 + geom_hline(yintercept=7117225, linetype="dashed", color = "darkorange1")+
+  annotate("text",x = as.Date("2021-04-01"), y = 7117225, label = "70% of NZ population", color = "darkorange1")+
+  geom_hline(yintercept=8021078, linetype="dotdash", color = "black")+
+  annotate("text",x = as.Date("2021-07-10"), y = 8021078, label = "80% of NZ population", color = "black")+
+  geom_hline(yintercept=9010216, linetype="longdash", color = "brown")+
+  annotate("text",x = as.Date("2021-12-07"), y = 9010216, label = "90% of NZ population", color = "brown")+
+  ggtitle("Cumulative vaccinations forecast of NZ using ARIMA - as on 12/09/2021") + ylim(0, 10500000)+ annotate("text", x = as.Date("2022-02-01"), y = 3000000, label = "Blue dot = Arima Point Forecast \n Green line = Arima Hi .95 \nRed line = Arima Low .95 ")
+  
+#A glimpse into the forecast of Health Ministry
+ggplot() + geom_line(aes(x=Date,y = Original_cumulative_vaccinations_model), color = "red", data = comparison) + ylim(0, 8000000) +ggtitle("Cumulative Vaccination Forecast Model of Ministry of Health" )
+
+##################################################################################
+#Final Result Interpretation
+
+# 1) From the above plot it is clear that, as per Arima Point forecast the Herd Immunity of 70% level(ie approximately 0.7 million doses for the total population of NZ) could be achieved by mid of October 2021(17/10/2021) while the government's estimate shows the same to be achieved by 24/10/2021. Given the current scenario, if we rely on confidence levels of our Arima model,  we could interpret that we are 95% confident that the interval between 21/11/2021 [lower bound] and 03/10/2021 [upper bound] contains the true value of the population parameter(in this case 70% Herd immmunity(Cumulative doses).
+
+#2) Similarly 80% vaccination could be achieved by end of October 2021 according to our model(31/10/2021) while the government's estimate shows the same to be achieved by 21/11/2021. Here, if we rely on confidence level of Arima, it could be meant that we are 95% confident that the interval between 26/12/2021 [lower bound] and 10/10/2021 [upper bound] contains the true value of the population parameter (here it is the 80% Herd immmunity(Cumulative doses).
+
+
+
+#It has to be noted that models forecast everything theoretically while practical difficulties has to be taken into considertion. Given the Delta variant factor, vaccination centres being closed due to lockdown measures and changing geo-political scenario(NZ has increased Afghan refugee quota to 1500 this year), it is safe to assume that there is a 95% probability that, in the near future the true value of the population parameter(in this case 80% of cummulative vaccination aka Herd immunity) will fall within 26/12/2021 [lower bound] and 10/10/2021 [upper bound] and this will be a more realistic one when compared with the normal Arima point forecast. We also have to take into consideration some more factors like the government advising people to choose an enhanced gap of 6 weeks between the two doses(standard gap is 3 weeks). Apart from that we have to take the children below age 12 into consideration who don't need a vaccine and these numbers have to be excluded from the forecast. 
+
+#At last when we compare our Arima's forecast with the government's Cumulative Vaccination Forecast Model, it is almost on par with the government's forecast model forecasting a 80% cumulative vaccination achievement by December 2021 considering the 95% confidence interval. This is a kind of Acid Test for our model which proves that our model does pretty good.
+##################################################################################
+```
